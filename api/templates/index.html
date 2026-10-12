@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>StreamPulse | Real-Time Telemetry & Incident Stream</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-mono p-6">
+  <div class="max-w-6xl mx-auto space-y-6">
+    
+    <!-- Top Header Bar -->
+    <header class="flex items-center justify-between border-b border-slate-800 pb-4">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+          <span>⚡ StreamPulse</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">v1.0.0</span>
+        </h1>
+        <p class="text-xs text-slate-400 mt-1">High-Throughput Telemetry Broker • Redpanda • Redis Rolling Window • Groq Reasoning</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          Broker Live
+        </span>
+      </div>
+    </header>
+
+    <!-- Metrics Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-lg">
+        <div class="text-xs text-slate-400 uppercase tracking-wider">Broker Throughput</div>
+        <div class="text-2xl font-bold text-cyan-400 mt-1">~100-500 <span class="text-sm font-normal text-slate-400">evt/s</span></div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-lg">
+        <div class="text-xs text-slate-400 uppercase tracking-wider">Statistical Gate</div>
+        <div class="text-2xl font-bold text-amber-400 mt-1">&ge; 3.5 &sigma; <span class="text-sm font-normal text-slate-400">Z-Score</span></div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-lg">
+        <div class="text-xs text-slate-400 uppercase tracking-wider">Semantic Diagnostic Engine</div>
+        <div class="text-2xl font-bold text-purple-400 mt-1">Groq + SRE Rules <span class="text-sm font-normal text-slate-400">&lt; 1.5s</span></div>
+      </div>
+    </div>
+
+    <!-- Live Incident Stream Feed -->
+    <section class="bg-slate-900 border border-slate-800 rounded-lg p-5">
+      <div class="flex items-center justify-between mb-4 border-b border-slate-800/80 pb-3">
+        <h2 class="text-sm font-semibold tracking-wide uppercase text-slate-300">Live Incident Stream (SSE)</h2>
+        <span id="incidentCount" class="text-xs text-slate-400">0 events received</span>
+      </div>
+
+      <div id="incidentList" class="space-y-3 overflow-y-auto max-h-[600px] pr-1">
+        <div id="emptyState" class="text-xs text-slate-500 py-8 text-center italic">
+          Listening for telemetry degradation spikes from Redpanda...
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let count = 0;
+    const evtSource = new EventSource("/v1/stream/anomalies");
+
+    evtSource.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+      const list = document.getElementById("incidentList");
+      const emptyState = document.getElementById("emptyState");
+      if (emptyState) emptyState.remove();
+
+      count++;
+      document.getElementById("incidentCount").innerText = `${count} incidents captured`;
+
+      let diag = { severity: "HIGH", root_cause: "High latency detected", recommended_action: "Review logs" };
+      if (data.diagnostic) {
+        try { diag = JSON.parse(data.diagnostic); } catch(e) {}
+      }
+
+      const card = document.createElement("div");
+      card.className = "p-4 rounded-lg bg-slate-950 border border-rose-500/40 text-xs space-y-2 transition-all";
+      card.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30">${diag.severity || 'CRITICAL'}</span>
+            <span class="font-bold text-white">${data.service}</span>
+            <span class="text-slate-400">Status ${data.status_code}</span>
+          </div>
+          <span class="text-slate-400">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+        </div>
+        <div class="grid grid-cols-3 gap-2 bg-slate-900/60 p-2 rounded text-slate-300">
+          <div>Observed: <strong class="text-rose-400">${data.current_value}ms</strong></div>
+          <div>Baseline: <strong>${data.rolling_mean}ms</strong></div>
+          <div>Z-Score: <strong class="text-amber-400">${data.z_score}&sigma;</strong></div>
+        </div>
+        <div class="text-slate-300"><strong class="text-slate-100">Root Cause:</strong> ${diag.root_cause}</div>
+        <div class="text-slate-400"><strong class="text-cyan-400">Runbook Action:</strong> ${diag.recommended_action}</div>
+      `;
+
+      list.insertBefore(card, list.firstChild);
+    };
+  </script>
+</body>
+</html>
